@@ -26,6 +26,10 @@
 #*.obj
 #
 
+Win32/
+Win64/
+*.pyc
+
 # Delphi compiler-generated binaries (safe to delete)
 *.exe
 *.dll
