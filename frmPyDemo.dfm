@@ -65,9 +65,10 @@ object Form1: TForm1
     Width = 212
     Height = 137
     Lines.Strings = (
+      'import pyt'
       'from tkinter import *'
       'root = Tk()'
-      'w = Label(root, text='#39'tkinter gui'#39')'
+      'w = Label(root, text=pyt.num)'
       'w.pack()'
       'root.mainloop()')
     TabOrder = 15
@@ -186,5 +187,14 @@ object Form1: TForm1
     Caption = 'Py3'
     TabOrder = 8
     OnClick = bPy3Click
+  end
+  object cbThreads: TCheckBox
+    Left = 680
+    Top = 12
+    Width = 97
+    Height = 17
+    Caption = 'Threads'
+    TabOrder = 17
+    OnClick = cbThreadsClick
   end
 end

@@ -26,6 +26,7 @@ type
     bPyRegExt: TButton;
     mPy3: TMemo;
     bPy3: TButton;
+    cbThreads: TCheckBox;
     procedure bPyScripterClick(Sender: TObject);
     procedure bPy5Click(Sender: TObject);
     procedure bRegPyFuncClick(Sender: TObject);
@@ -38,6 +39,7 @@ type
     procedure bPyRegConstClick(Sender: TObject);
     procedure bPyRegExtClick(Sender: TObject);
     procedure bPy3Click(Sender: TObject);
+    procedure cbThreadsClick(Sender: TObject);
   private
     { Private declarations }
   public
@@ -53,7 +55,7 @@ type
     PyConst_names: TStringList;
     PyConst_values: array of variant;
   public
-    constructor Create;
+    constructor Create(_PyEngine: TPythonEngine);
     destructor Destroy; override;
     procedure RegisterFunction0(
       const FuncGroup: string;
@@ -76,7 +78,7 @@ implementation
 
 {$R *.dfm}
 
-uses pyscripter_launch;
+uses pyscripter_launch, cInternalPython;
 
 var
   PyEngine: TPythonEngine = nil;
@@ -91,6 +93,14 @@ const
   PythonHome: string = '';
 
 
+procedure MyCreateExternalModules(_PyEngine: TPythonEngine);
+begin
+  if pyf = nil then begin
+    pyf := TPyScriptFunctions.Create(_PyEngine);
+    pyf.DoRegister;
+  end;
+end;
+
 procedure ErrorMsg(m: string);
 begin
    ShowMessage('err: '+m);
@@ -101,10 +111,10 @@ var
   t0: PPyObject;
 begin
   Result := nil;
-  if pyEngine.PyArg_ParseTuple(args, 'O', @t0)=0 then exit;
-  s := pyEngine.PyObjectAsString(t0);
-  if pyEngine.PyErr_Occurred() <> nil then exit;
-  Result := pyEngine.ReturnNone;
+  if PyEngine.PyArg_ParseTuple(args, 'O', @t0)=0 then exit;
+  s := PyEngine.PyObjectAsString(t0);
+  if PyEngine.PyErr_Occurred() <> nil then exit;
+  Result := PyEngine.ReturnNone;
 end;
 
 function Script_ShowMessage_py(self, args: PPyObject): PPyObject; cdecl;
@@ -120,13 +130,13 @@ function PyScriptIsSuccessful: Boolean;
 var
   exc_type, exc_val, exc_tb: PPyObject;
 begin
-  Result := pyEngine.PyErr_Occurred = nil;
+  Result := PyEngine.PyErr_Occurred = nil;
   if not Result then
   begin
-    pyEngine.PyErr_Fetch(exc_type, exc_val, exc_tb);
-    ShowMessage(pyEngine.PyObjectAsString(exc_type) + ': ' + pyEngine.PyObjectAsString(exc_val)+EOL+
-    'line number:'+pyEngine.PyObjectAsString(pyEngine.PyObject_GetAttrString(exc_tb,'tb_lineno')));
-    pyEngine.PyErr_Clear;
+    PyEngine.PyErr_Fetch(exc_type, exc_val, exc_tb);
+    ShowMessage(PyEngine.PyObjectAsString(exc_type) + ': ' + PyEngine.PyObjectAsString(exc_val)+EOL+
+    'line number:'+PyEngine.PyObjectAsString(PyEngine.PyObject_GetAttrString(exc_tb,'tb_lineno')));
+    PyEngine.PyErr_Clear;
   end;
 end;
 
@@ -137,51 +147,52 @@ var
 begin
   Result := false;
   try
-    d := pyEngine.PyDict_New();
-    pyEngine.PyDict_SetItemString(d, '__builtins__', pyEngine.PyEval_GetBuiltins);
-    pyEngine.PyDict_SetItemString(d, '__annotations__', pyEngine.PyDict_New());
-    pyEngine.PyDict_SetItemString(d, '__doc__',
-    pyEngine.PyUnicodeFromString('define a no-argument function called main here'));
-    pyEngine.PyDict_SetItemString(d, '__package__', pyEngine.ReturnNone);
-    pyEngine.PyDict_SetItemString(d, '__spec__', pyEngine.ReturnNone);
+    d := PyEngine.PyDict_New();
+    PyEngine.PyDict_SetItemString(d, '__builtins__', PyEngine.PyEval_GetBuiltins);
+    PyEngine.PyDict_SetItemString(d, '__annotations__', PyEngine.PyDict_New());
+    PyEngine.PyDict_SetItemString(d, '__doc__',
+    PyEngine.PyUnicodeFromString('define a no-argument function called main here'));
+    PyEngine.PyDict_SetItemString(d, '__package__', PyEngine.ReturnNone);
+    PyEngine.PyDict_SetItemString(d, '__spec__', PyEngine.ReturnNone);
 
     __name__ := '__main__'; // this is the accepted name for the main script, normal usage: if __name__ == '__main__':
-    pyEngine.PyDict_SetItemString(d, '__name__', pyEngine.PyUnicodeFromString(__name__));
+    PyEngine.PyDict_SetItemString(d, '__name__', PyEngine.PyUnicodeFromString(__name__));
 
-    // d := pyEngine.PyEval_GetGlobals;
-    //pyEngine.ExecString(AnsiString(ScriptLines.GetText), d, d);
-    pyEngine.ExecStrings(ScriptLines, d, d);
+    // d := PyEngine.PyEval_GetGlobals;
+    //PyEngine.ExecString(AnsiString(ScriptLines.GetText), d, d);
+    PyEngine.ExecStrings(ScriptLines, d, d);
 
-    //pyEngine.PyDict_SetItemString(d, '__name__', pyEngine.PyUnicodeFromString('main_func'));
-    //pyEngine.ExecStrings(ScriptLines, d, d);
-    foo := pyEngine.PyMapping_GetItemString(d, 'main');
+    //PyEngine.PyDict_SetItemString(d, '__name__', PyEngine.PyUnicodeFromString('main_func'));
+    //PyEngine.ExecStrings(ScriptLines, d, d);
+    foo := PyEngine.PyMapping_GetItemString(d, 'main');
     if foo <> nil then
     begin
-      args := pyEngine.Py_BuildValue('()');
-      res := pyEngine.PyObject_Call(foo, args, nil);
+      args := PyEngine.Py_BuildValue('()');
+      res := PyEngine.PyObject_Call(foo, args, nil);
       if PyScriptIsSuccessful then
       begin
         Result := True;
-        if res<>pyEngine.Py_None then
-          ResultStr := pyEngine.PyObjectAsString(res)
+        if res<>PyEngine.Py_None then
+          ResultStr := PyEngine.PyObjectAsString(res)
         else
           ResultStr := '';
-        pyEngine.PyErr_Clear;
+        PyEngine.PyErr_Clear;
       end;
     end
     else begin
-      pyEngine.PyErr_Clear;
+      PyEngine.PyErr_Clear;
     end;
   finally
   end;
 end;
 
-constructor TPyScriptFunctions.Create;
+constructor TPyScriptFunctions.Create(_PyEngine: TPythonEngine);
 begin
+  PyEngine := _PyEngine;
   PyModule := TPythonModule.Create(nil);
 
   PyModule.Name := 'PyModule';
-  PyModule.Engine := PyEngine;
+  PyModule.Engine := _PyEngine;
   PyModule.ModuleName := 'pyt';
 
   PyConst_names := TStringList.Create;
@@ -310,9 +321,9 @@ procedure TPyScriptFunctions.RegisterPyPath(path: String);
 var
   obj1, obj2: PPyObject;
 begin
-  obj1 := pyEngine.PySys_GetObject('path');
-  obj2 := pyEngine.PyUnicodeFromString(path);
-  pyEngine.PyList_Append(obj1, obj2);
+  obj1 := PyEngine.PySys_GetObject('path');
+  obj2 := PyEngine.PyUnicodeFromString(path);
+  PyEngine.PyList_Append(obj1, obj2);
 end;
 
 
@@ -324,15 +335,27 @@ end;
 procedure TForm1.bPyInitClick(Sender: TObject);
 begin
   if PyEngine = nil then
-    PyEngine := TPythonEngine.Create(nil);
+    try
+      PyEngine := GetPythonEngine;
+    except
+      PyEngine := TPythonEngine.Create(nil);
+    end;
   if pyf = nil then
-    pyf := TPyScriptFunctions.Create;
+    pyf := TPyScriptFunctions.Create(PyEngine);
 end;
 
 procedure TForm1.bRegPyFuncClick(Sender: TObject);
 begin
   bPyInitClick(Sender);
   pyf.DoRegister;
+end;
+
+procedure TForm1.cbThreadsClick(Sender: TObject);
+begin
+  if cbThreads.Checked then
+    TPythonThread.Py_Begin_Allow_Threads
+  else
+    TPythonThread.Py_End_Allow_Threads;
 end;
 
 procedure TForm1.bPyLoadClick(Sender: TObject);
@@ -373,26 +396,40 @@ end;
 
 procedure TForm1.bPy5Click(Sender: TObject);
 begin
+  //PyEngine.ExecStrings(mPy5.Lines);
+  {ThreadPythonExec(
+  procedure
+  begin
+    PyEngine.ExecStrings(mPy5.Lines);
+  end);}
   Run_TempScript(mPy5.Lines);
 end;
 
 function TForm1.Run_TempScript(m: TStrings): String;
 begin
   Result := '';
-  try
-    if RunScript_py(m, Result) then
-      mOutput.Text := Result;
-  except
-    on E: Exception do
-      ErrorMsg(E.ToString);
+  if cbThreads.Checked then begin
+    ThreadPythonExec(
+      procedure
+      begin
+        PyEngine.ExecStrings(m);
+      end);
+  end else begin
+    try
+      if RunScript_py(m, Result) then
+        mOutput.Text := Result;
+    except
+      on E: Exception do
+        ErrorMsg(E.ToString);
+    end;
   end;
 end;
 
 procedure TForm1.bPyScripterClick(Sender: TObject);
 begin
+  cInternalPython.CreateExternalModules := MyCreateExternalModules;
   pyscripter_init;
   pyscripter_show;
-  pyengine := pyscripter_engine;
 end;
 
 end.
